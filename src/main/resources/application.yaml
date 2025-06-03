@@ -6,19 +6,19 @@ ktor:
       - com.example.ApplicationKt.module
 
 database:
-  url: "jdbc:postgresql://localhost:5432/icu_db"
+  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway"
   driver: "org.postgresql.Driver"
   user: "postgres"
-  password: "2025"
+  password: "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
 
 jwt:
-  audience: "http://localhost/"
-  domain: "http://localhost/"
+  audience: "http://yamabiko.proxy.rlwy/"
+  domain: "http://yamabiko.proxy.rlwy/"
   realm: "Access to protected routes"
   secret: "secret"
 
 postgres:
-  url: "jdbc:postgresql://localhost/icu_db"
+  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net/railway"
   user: postgres
-  password: 2025
+  password: bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa
 

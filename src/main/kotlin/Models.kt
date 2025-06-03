@@ -156,3 +156,6 @@ data class CurrentObservation(
     val unit: String?,
     val effectiveTimestamp: String
 )
+
+
+//postgresql://postgres:bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa@yamabiko.proxy.rlwy.net:42587/railway
