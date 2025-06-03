@@ -60,10 +60,12 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
 }
 
-tasks.jar {
-    manifest {
-        attributes["Main-Class"] = "io.ktor.server.netty.EngineMain"
+tasks {
+    jar {
+        manifest {
+            attributes["Main-Class"] = "io.ktor.server.netty.EngineMain"
+        }
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
