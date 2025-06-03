@@ -1,0 +1,24 @@
+ktor:
+  deployment:
+    port: 8080
+  application:
+    modules:
+      - com.example.ApplicationKt.module
+
+database:
+  url: "jdbc:postgresql://localhost:5432/icu_db"
+  driver: "org.postgresql.Driver"
+  user: "postgres"
+  password: "2025"
+
+jwt:
+  audience: "http://localhost/"
+  domain: "http://localhost/"
+  realm: "Access to protected routes"
+  secret: "secret"
+
+postgres:
+  url: "jdbc:postgresql://localhost/icu_db"
+  user: postgres
+  password: 2025
+
