@@ -438,6 +438,34 @@ fun Application.configureRouting() {
                 )
                 val updatedThreshold = call.receive<AlertThreshold>()
 
+                // Валидация ID в теле запроса
+                if (updatedThreshold.id != id) {
+                    return@put call.respondText(
+                        "Threshold ID in body (${updatedThreshold.id}) does not match URL ID ($id)",
+                        status = HttpStatusCode.BadRequest
+                    )
+                }
+
+                // Проверка существования порога и согласованности patientId и metricCode
+                val existingThreshold = transaction {
+                    AlertThresholds.select { AlertThresholds.id eq id }
+                        .firstOrNull()
+                }
+                if (existingThreshold == null) {
+                    return@put call.respondText(
+                        "Threshold with ID $id not found",
+                        status = HttpStatusCode.NotFound
+                    )
+                }
+                if (existingThreshold[AlertThresholds.patientId] != updatedThreshold.patientId ||
+                    existingThreshold[AlertThresholds.metricCode] != updatedThreshold.metricCode) {
+                    return@put call.respondText(
+                        "Cannot modify patientId or metricCode",
+                        status = HttpStatusCode.BadRequest
+                    )
+                }
+
+                // Обновление порога
                 val updatedRows = transaction {
                     AlertThresholds.update({ AlertThresholds.id eq id }) {
                         it[minValue] = updatedThreshold.minValue
@@ -450,9 +478,12 @@ fun Application.configureRouting() {
                 } else {
                     call.respondText("Threshold with ID $id not found", status = HttpStatusCode.NotFound)
                 }
+            } catch (e: ContentTransformationException) {
+                call.application.log.error("Invalid request body: ${e.message}", e)
+                call.respondText("Invalid request body: ${e.message}", status = HttpStatusCode.BadRequest)
             } catch (e: Exception) {
-                call.application.log.error("Error creating alert threshold: ${e.message}", e)
-                call.respondText("Failed to create alert threshold: ${e.message}", status = HttpStatusCode.BadRequest)
+                call.application.log.error("Error updating alert threshold: ${e.message}", e)
+                call.respondText("Failed to update alert threshold: ${e.message}", status = HttpStatusCode.InternalServerError)
             }
         }
 
