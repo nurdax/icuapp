@@ -157,5 +157,10 @@ data class CurrentObservation(
     val effectiveTimestamp: String
 )
 
+@Serializable
+data class StatusUpdate(
+    val status: String
+)
+
 
 //postgresql://postgres:bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa@yamabiko.proxy.rlwy.net:42587/railway

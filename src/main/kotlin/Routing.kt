@@ -178,6 +178,40 @@ fun Application.configureRouting() {
             }
         }
 
+
+        patch("/patients/{id}/status") {
+            try {
+                val id = call.parameters["id"]?.toIntOrNull() ?: return@patch call.respondText(
+                    "Invalid patient ID",
+                    status = HttpStatusCode.BadRequest
+                )
+                val statusUpdate = call.receive<StatusUpdate>()
+
+                // Валидация статуса
+                if (statusUpdate.status !in listOf("критическое", "стабильное", "выписан")) {
+                    return@patch call.respondText(
+                        "Invalid status: must be one of [критическое, стабильное, выписан]",
+                        status = HttpStatusCode.BadRequest
+                    )
+                }
+
+                val updatedRows = transaction {
+                    Patients.update({ Patients.id eq id }) {
+                        it[status] = statusUpdate.status
+                    }
+                }
+
+                if (updatedRows > 0) {
+                    call.respondText("Patient status updated to ${statusUpdate.status}", status = HttpStatusCode.OK)
+                } else {
+                    call.respondText("Patient with ID $id not found", status = HttpStatusCode.NotFound)
+                }
+            } catch (e: Exception) {
+                call.application.log.error("Error updating patient status: ${e.message}", e)
+                call.respondText("Failed to update patient status: ${e.message}", status = HttpStatusCode.BadRequest)
+            }
+        }
+
         // Новый маршрут: Назначение устройства пациенту
         post("/patient_device") {
             try {

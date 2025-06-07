@@ -33,7 +33,7 @@ object Patients : Table("patient") {
     val birthDate = date("birth_date")
     val admissionDate = timestamp("admission_date")
     val nurseId = integer("nurse_id").references(Practitioners.id).nullable() // Новое поле
-    val status = varchar("status", 20).check { it inList listOf("критическое", "стабильное", "выписан") }.default("stable")
+    val status = varchar("status", 20).check { it inList listOf("критическое", "стабильное", "выписан") }.default("стабильное")
     override val primaryKey = PrimaryKey(id)
 }
 
