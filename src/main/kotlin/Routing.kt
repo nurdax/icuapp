@@ -430,6 +430,34 @@ fun Application.configureRouting() {
             }
         }
 
+        put("/alert_thresholds/{id}") {
+            try {
+                val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respondText(
+                    "Invalid threshold ID",
+                    status = HttpStatusCode.BadRequest
+                )
+                val updatedThreshold = call.receive<AlertThreshold>()
+
+                val updatedRows = transaction {
+                    AlertThresholds.update({ AlertThresholds.id eq id }) {
+                        it[minValue] = updatedThreshold.minValue
+                        it[maxValue] = updatedThreshold.maxValue
+                    }
+                }
+
+                if (updatedRows > 0) {
+                    call.respondText("Threshold updated", status = HttpStatusCode.OK)
+                } else {
+                    call.respondText("Threshold with ID $id not found", status = HttpStatusCode.NotFound)
+                }
+            } catch (e: Exception) {
+                call.application.log.error("Error creating alert threshold: ${e.message}", e)
+                call.respondText("Failed to create alert threshold: ${e.message}", status = HttpStatusCode.BadRequest)
+            }
+        }
+
+
+
         // Медицинские записи
         get("/encounters") {
             val patientId = call.request.queryParameters["patient_id"]?.toIntOrNull()
