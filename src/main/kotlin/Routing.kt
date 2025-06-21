@@ -22,7 +22,7 @@ import java.time.format.DateTimeParseException
 
 
 import kotlinx.serialization.json.Json
-
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
 
 fun Application.configureRouting() {
@@ -31,7 +31,7 @@ fun Application.configureRouting() {
             json(Json { ignoreUnknownKeys = true })
         }
     }
-    val projectId = "diplom-e6c8f" // Replace with your Firebase project ID
+    val projectId = "diplom-e6c8f" // Firebase project ID
     val fcmEndpoint = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
     routing {
         // Пациенты
@@ -87,7 +87,7 @@ fun Application.configureRouting() {
                 status = HttpStatusCode.BadRequest
             )
             val patients = transaction {
-                Patients.select { Patients.nurseId eq nurseId }.map {
+                Patients.selectAll().where { Patients.nurseId eq nurseId }.map {
                     Patient(
                         id = it[Patients.id],
                         medicalRecordNumber = it[Patients.medicalRecordNumber],
@@ -136,24 +136,21 @@ fun Application.configureRouting() {
             }
         }
 
-        // Новый маршрут: Обновление пациента
+        // Обновление пациента
         put("/patients/{id}") {
             try {
-                val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respondText(
-                    "Invalid patient ID",
-                    status = HttpStatusCode.BadRequest
-                )
+                val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respondText("Неверный ID пациента", status = HttpStatusCode.BadRequest)
                 val createPatient = call.receive<CreatePatient>()
                 val birthDatee = try {
                     LocalDate.parse(createPatient.birthDate)
                 } catch (e: DateTimeParseException) {
-                    call.respondText("Invalid birthDate format: ${e.message}", status = HttpStatusCode.BadRequest)
+                    call.respondText("Неверный формат даты рождения: ${e.message}", status = HttpStatusCode.BadRequest)
                     return@put
                 }
                 val admissionDatee = try {
                     Instant.parse(createPatient.admissionDate)
                 } catch (e: DateTimeParseException) {
-                    call.respondText("Invalid admissionDate format: ${e.message}", status = HttpStatusCode.BadRequest)
+                    call.respondText("Недопустимый формат даты поступления: ${e.message}", status = HttpStatusCode.BadRequest)
                     return@put
                 }
                 val updatedRows = transaction {
@@ -168,16 +165,15 @@ fun Application.configureRouting() {
                     }
                 }
                 if (updatedRows > 0) {
-                    call.respondText("Patient with ID $id updated", status = HttpStatusCode.OK)
+                    call.respondText("Пациент с id $id обновлен", status = HttpStatusCode.OK)
                 } else {
-                    call.respondText("Patient with ID $id not found", status = HttpStatusCode.NotFound)
+                    call.respondText("Пациент с id $id не найден", status = HttpStatusCode.NotFound)
                 }
             } catch (e: Exception) {
                 call.application.log.error("Error updating patient: ${e.message}", e)
                 call.respondText("Failed to update patient: ${e.message}", status = HttpStatusCode.BadRequest)
             }
         }
-
 
         patch("/patients/{id}/status") {
             try {
@@ -245,7 +241,7 @@ fun Application.configureRouting() {
             }
         }
 
-        // Новый маршрут: Получение назначенных устройств
+        // Получение назначенных устройств
         get("/patient_device") {
             val patientId = call.request.queryParameters["patient_id"]?.toIntOrNull()
             val deviceId = call.request.queryParameters["device_id"]?.toIntOrNull()
@@ -325,6 +321,7 @@ fun Application.configureRouting() {
             call.respond(observations)
         }
 
+        //Отправление данных для графика
         post("/observations") {
             try {
                 val createObservation = call.receive<CreateObservation>()
@@ -347,10 +344,10 @@ fun Application.configureRouting() {
                         it[recordedAt] = effectiveTimestamp
                     } get Observations.id
                 }
-                call.respondText("Observation created with ID $id", status = HttpStatusCode.Created)
+                call.respondText("Observation создан с ID $id", status = HttpStatusCode.Created)
             } catch (e: Exception) {
-                call.application.log.error("Error creating observation: ${e.message}", e)
-                call.respondText("Failed to create observation: ${e.message}", status = HttpStatusCode.BadRequest)
+                call.application.log.error("Ошибка при создании observation: ${e.message}", e)
+                call.respondText("Не удалось создать observation: ${e.message}", status = HttpStatusCode.BadRequest)
             }
         }
 
@@ -528,27 +525,43 @@ fun Application.configureRouting() {
         }
 
         post("/login") {
-            val practitioner = call.receive<Practitioner>()
-            val user = transaction {
-                Practitioners.select { Practitioners.login eq practitioner.login }
-                    .map {
+            try {
+                val loginRequest = call.receive<Practitioner>()
+                val user = transaction {
+                    Practitioners.select { Practitioners.login eq loginRequest.login }
+                        .map {
+                            Practitioner(
+                                id = it[Practitioners.id],
+                                login = it[Practitioners.login],
+                                password = it[Practitioners.passwordHash], // это хэш из БД
+                                fullName = it[Practitioners.fullName],
+                                role = it[Practitioners.role]
+                            )
+                        }
+                        .singleOrNull()
+                }
+
+                if (user != null && BCrypt.checkpw(loginRequest.password, user.password)) {
+                    // Пароль совпадает — отправляем данные без пароля
+                    call.respond(
                         Practitioner(
-                            id = it[Practitioners.id],
-                            login = it[Practitioners.login],
-                            password = it[Practitioners.passwordHash],
-                            fullName = it[Practitioners.fullName],
-                            role = it[Practitioners.role]
+                            id = user.id,
+                            login = user.login,
+                            password = "", // Не отправляем пароль клиенту
+                            fullName = user.fullName,
+                            role = user.role
                         )
-                    }
-                    .singleOrNull()
-            }
-            if (user != null && user.password == practitioner.password) { // В реальном проекте используйте bcrypt
-                call.respond(user)
-            } else {
-                call.respondText("Invalid login or password", status = HttpStatusCode.Unauthorized)
+                    )
+                } else {
+                    call.respondText("Invalid login or password", status = HttpStatusCode.Unauthorized)
+                }
+            } catch (e: Exception) {
+                call.application.log.error("Login error: ${e.message}", e)
+                call.respondText("Internal server error", status = HttpStatusCode.InternalServerError)
             }
         }
         // Новый маршрут: Регистрация пользователя
+
         post("/register") {
             try {
                 val createPractitioner = call.receive<CreatePractitioner>()
@@ -556,10 +569,14 @@ fun Application.configureRouting() {
                     call.respondText("Invalid role: must be 'doctor' or 'nurse'", status = HttpStatusCode.BadRequest)
                     return@post
                 }
+
+                // Хэшируем пароль
+                val hashedPassword = BCrypt.hashpw(createPractitioner.password, BCrypt.gensalt())
+
                 val id = transaction {
                     Practitioners.insert {
                         it[login] = createPractitioner.login
-                        it[passwordHash] = createPractitioner.password
+                        it[passwordHash] = hashedPassword // Сохраняем хэш вместо оригинального пароля
                         it[fullName] = createPractitioner.fullName
                         it[role] = createPractitioner.role
                     } get Practitioners.id
@@ -568,7 +585,7 @@ fun Application.configureRouting() {
                     Practitioner(
                         id = id,
                         login = createPractitioner.login,
-                        password = "",
+                        password = "", // Не возвращаем пароль
                         fullName = createPractitioner.fullName,
                         role = createPractitioner.role
                     )
@@ -631,9 +648,6 @@ fun Application.configureRouting() {
 
 
 }
-
-
-
 
 
 suspend fun getAccessToken(): String {
