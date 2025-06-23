@@ -20,9 +20,15 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 
+import io.ktor.server.websocket.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.channels.BroadcastChannel
+
+
 
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import java.util.concurrent.ConcurrentHashMap
 
 
 fun Application.configureRouting() {
@@ -30,9 +36,13 @@ fun Application.configureRouting() {
         install(io.ktor.client.plugins.contentnegotiation.ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
+        // Запуск генерации данных мониторинга
     }
     val projectId = "diplom-e6c8f" // Firebase project ID
     val fcmEndpoint = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
+
+
+    MonitoringGenerator.startMonitoring(this)
     routing {
         // Пациенты
         get("/patients") {

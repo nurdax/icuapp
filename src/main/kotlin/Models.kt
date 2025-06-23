@@ -26,10 +26,6 @@ data class Notification(
     val title: String,
     val body: String
 )
-
-
-
-// Модель для чтения (GET)
 @Serializable
 data class Patient(
     val id: Int,

@@ -7,10 +7,10 @@ ktor:
       - com.example.ApplicationKt.module
 
 database:
-  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway"
+  url: "jdbc:postgresql://localhost:5432/icu_db"
   driver: "org.postgresql.Driver"
   user: "postgres"
-  password: "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
+  password: "2025"
 
 jwt:
   audience: "http://yamabiko.proxy.rlwy/"
@@ -19,7 +19,6 @@ jwt:
   secret: "secret"
 
 postgres:
-  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net/railway"
+  url: "jdbc:postgresql://localhost:5432/icu_db"
   user: postgres
-  password: bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa
-
+  password: 2025

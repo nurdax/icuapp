@@ -17,10 +17,10 @@ fun Application.module() {
    )*/
 
     Database.connect(
-        url= "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway",
-        driver= "org.postgresql.Driver",
-        user= "postgres",
-        password= "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
+        url = "jdbc:postgresql://localhost:5432/icu_db",
+        driver = "org.postgresql.Driver",
+        user = "postgres",
+        password = "2025"
     )
 
     configureSerialization()
@@ -28,3 +28,12 @@ fun Application.module() {
     configureSecurity()
     configureRouting()
 }
+
+/*
+    Database.connect(
+        url= "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway",
+        driver= "org.postgresql.Driver",
+        user= "postgres",
+        password= "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
+    )
+ */

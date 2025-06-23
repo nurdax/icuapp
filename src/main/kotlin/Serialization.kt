@@ -14,3 +14,24 @@ fun Application.configureSerialization() {
         })
     }
 }
+
+
+/*
+database:
+  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway"
+  driver: "org.postgresql.Driver"
+  user: "postgres"
+  password: "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
+
+jwt:
+  audience: "http://yamabiko.proxy.rlwy/"
+  domain: "http://yamabiko.proxy.rlwy/"
+  realm: "Access to protected routes"
+  secret: "secret"
+
+postgres:
+  url: "jdbc:postgresql://yamabiko.proxy.rlwy.net/railway"
+  user: postgres
+  password: bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa
+
+  */

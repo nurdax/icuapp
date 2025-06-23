@@ -30,6 +30,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-jdbc:0.44.1")
     implementation("com.google.auth:google-auth-library-oauth2-http:1.17.0")
 
+    implementation("io.ktor:ktor-server-websockets:3.1.3")
 
     testImplementation("io.kotest:kotest-assertions-core:5.7.2")
     testImplementation("io.kotest:kotest-framework-engine:5.7.2")
