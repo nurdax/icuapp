@@ -3,6 +3,8 @@ package com.example
 import kotlinx.serialization.Serializable
 
 
+
+
 @Serializable
 data class NotificationRequest(
     val token: String,
@@ -50,7 +52,7 @@ data class CreatePatient(
     val nurseId: Int?
 )
 
-// Модель для чтения (GET)
+
 @Serializable
 data class Observation(
     val id: Long,
@@ -60,6 +62,13 @@ data class Observation(
     val value: Double,
     val unit: String?,
     val effectiveTimestamp: String
+)
+
+
+
+@Serializable
+data class FcmTokenRequest(
+    val fcmToken: String
 )
 
 // Модель для создания (POST)
@@ -117,8 +126,8 @@ data class AlertThreshold(
     val id: Int,
     val patientId: Int,
     val metricCode: String,
-    val minValue: Double?,
-    val maxValue: Double?
+    val minValue: Double?, // Теперь разрешено
+    val maxValue: Double?  // Теперь разрешено
 )
 
 @Serializable

@@ -15,6 +15,14 @@ fun Application.configureSerialization() {
     }
 }
 
+/*
+    Database.connect(
+        url= "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway",
+        driver= "org.postgresql.Driver",
+        user= "postgres",
+        password= "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
+    )
+ */
 
 /*
 database:

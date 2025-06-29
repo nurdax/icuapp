@@ -1,5 +1,6 @@
 package com.example
 
+
 import com.google.auth.oauth2.GoogleCredentials
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -11,38 +12,99 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.mindrot.jbcrypt.BCrypt
 import java.io.FileInputStream
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
+import java.util.*
 
 
-import io.ktor.server.websocket.*
-import io.ktor.websocket.*
-import kotlinx.coroutines.channels.BroadcastChannel
+suspend fun sendAlertNotificationToPractitioners(
+    application: Application, // Передаем экземпляр приложения для доступа к log
+    client: HttpClient,
+    fcmEndpoint: String,
+    patientId: Int,
+    metricCode: String,
+    alertValue: Double,
+    alertMessage: String,
+    severity: String
+) {
+    val nurseId = transaction {
+        Patients.select { Patients.id eq patientId }.singleOrNull()?.get(Patients.nurseId)
+    }
 
+    val targetPractitionerIds = mutableSetOf<Int>()
+    transaction {
+        Practitioners.select { Practitioners.role eq "doctor" }.map { it[Practitioners.id] }
+    }.forEach { targetPractitionerIds.add(it) }
 
+    nurseId?.let { targetPractitionerIds.add(it) }
 
-import kotlinx.serialization.json.Json
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import java.util.concurrent.ConcurrentHashMap
+    val tokensToSendTo = mutableListOf<String>()
+    targetPractitionerIds.forEach { practitionerId ->
+        val token = transaction {
+            PractitionerFcmTokens.select { PractitionerFcmTokens.practitionerId eq practitionerId }
+                .singleOrNull()?.get(PractitionerFcmTokens.fcmToken)
+        }
+        if (token != null) {
+            tokensToSendTo.add(token)
+        } else {
+            application.log.warn("FCM token not found for practitioner ID $practitionerId")
+        }
+    }
 
+    if (tokensToSendTo.isNotEmpty()) {
+        tokensToSendTo.forEach { token ->
+            val fcmMessage = FCMMessage(
+                message = Message(
+                    token = token,
+                    notification = Notification(
+                        title = "Тревога: ${metricCode.replace("_", " ").capitalize()} (ID пациента: $patientId)",
+                        body = "$alertMessage (Значение: ${"%.1f".format(Locale.US, alertValue)}, Важность: $severity)"
+                    )
+                )
+            )
+
+            try {
+                val response = client.post(fcmEndpoint) {
+                    contentType(ContentType.Application.Json)
+                    header(HttpHeaders.Authorization, "Bearer ${getAccessToken()}")
+                    setBody(Json.encodeToString(FCMMessage.serializer(), fcmMessage))
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    application.log.info("FCM уведомление успешно отправлено на $token для пациента $patientId, метрика $metricCode")
+                } else {
+                    val errorBody = response.bodyAsText()
+                    application.log.error("Не удалось отправить FCM уведомление на $token: ${response.status}, детали: $errorBody")
+                }
+            } catch (e: Exception) {
+                application.log.error("Исключение при отправке FCM уведомления на $token: ${e.message}", e)
+            }
+        }
+    } else {
+        application.log.warn("FCM токены не найдены для целевых врачей для отправки оповещения пациенту $patientId.")
+    }
+}
 
 fun Application.configureRouting() {
     val client = HttpClient(CIO) {
         install(io.ktor.client.plugins.contentnegotiation.ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
-        // Запуск генерации данных мониторинга
     }
-    val projectId = "diplom-e6c8f" // Firebase project ID
+    val projectId = "diplom-e6c8f"
     val fcmEndpoint = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send"
 
 
-    MonitoringGenerator.startMonitoring(this)
     routing {
         // Пациенты
         get("/patients") {
@@ -149,7 +211,8 @@ fun Application.configureRouting() {
         // Обновление пациента
         put("/patients/{id}") {
             try {
-                val id = call.parameters["id"]?.toIntOrNull() ?: return@put call.respondText("Неверный ID пациента", status = HttpStatusCode.BadRequest)
+                val id = call.parameters["id"]?.toIntOrNull() ?:
+                return@put call.respondText("Неверный ID пациента", status = HttpStatusCode.BadRequest)
                 val createPatient = call.receive<CreatePatient>()
                 val birthDatee = try {
                     LocalDate.parse(createPatient.birthDate)
@@ -220,36 +283,56 @@ fun Application.configureRouting() {
 
         // Новый маршрут: Назначение устройства пациенту
         post("/patient_device") {
-            try {
-                val patientDevice = call.receive<PatientDevice>()
-                // Проверка существования пациента и устройства
-                val patientExists = transaction {
-                    Patients.select { Patients.id eq patientDevice.patientId }.count() > 0
-                }
-                val deviceExists = transaction {
-                    Devices.select { Devices.id eq patientDevice.deviceId }.count() > 0
-                }
-                if (!patientExists) {
-                    call.respondText("Patient not found", status = HttpStatusCode.BadRequest)
-                    return@post
-                }
-                if (!deviceExists) {
-                    call.respondText("Device not found", status = HttpStatusCode.BadRequest)
-                    return@post
-                }
-                val id = transaction {
-                    PatientDevices.insert {
-                        it[patientId] = patientDevice.patientId
-                        it[deviceId] = patientDevice.deviceId
-                        it[settingsText] = patientDevice.settingsText
-                    } get PatientDevices.id
-                }
-                call.respondText("Patient device assigned with ID $id", status = HttpStatusCode.Created)
-            } catch (e: Exception) {
-                call.application.log.error("Error assigning patient device: ${e.message}", e)
-                call.respondText("Failed to assign patient device: ${e.message}", status = HttpStatusCode.BadRequest)
-            }
+    try {
+        val patientDevice = call.receive<PatientDevice>()
+        // Проверка существования пациента и устройства
+        val patientExists = transaction {
+            Patients.select { Patients.id eq patientDevice.patientId }.count() > 0
         }
+        val deviceExists = transaction {
+            Devices.select { Devices.id eq patientDevice.deviceId }.count() > 0
+        }
+        if (!patientExists) {
+            call.respondText("Patient not found", status = HttpStatusCode.BadRequest)
+            return@post
+        }
+        if (!deviceExists) {
+            call.respondText("Device not found", status = HttpStatusCode.BadRequest)
+            return@post
+        }
+
+        // Проверка, не привязано ли устройство к пациенту
+        val deviceAlreadyAssigned = transaction {
+            PatientDevices.select {
+                (PatientDevices.patientId eq patientDevice.patientId) and
+                        (PatientDevices.deviceId eq patientDevice.deviceId)
+            }.count() > 0
+        }
+        if (deviceAlreadyAssigned) {
+            call.respondText(
+                "Device is already assigned to this patient",
+                status = HttpStatusCode.Conflict
+            )
+            return@post
+        }
+
+        // Вставка новой записи
+        val id = transaction {
+            PatientDevices.insert {
+                it[patientId] = patientDevice.patientId
+                it[deviceId] = patientDevice.deviceId
+                it[settingsText] = patientDevice.settingsText
+            } get PatientDevices.id
+        }
+        call.respondText("Patient device assigned with ID $id", status = HttpStatusCode.Created)
+    } catch (e: Exception) {
+        call.application.log.error("Error assigning patient device: ${e.message}", e)
+        call.respondText(
+            "Failed to assign patient device: ${e.message}",
+            status = HttpStatusCode.BadRequest
+        )
+    }
+}
 
         // Получение назначенных устройств
         get("/patient_device") {
@@ -272,6 +355,26 @@ fun Application.configureRouting() {
                 }
             }
             call.respond(patientDevices)
+        }
+
+        delete("/patient_device/{id}") {
+            try {
+                val id = call.parameters["id"]?.toIntOrNull() ?: return@delete call.respondText(
+                    "Invalid patient device ID",
+                    status = HttpStatusCode.BadRequest
+                )
+                val deletedRows = transaction {
+                    PatientDevices.deleteWhere { PatientDevices.id eq id }
+                }
+                if (deletedRows > 0) {
+                    call.respondText("Patient device assignment with ID $id deleted", status = HttpStatusCode.OK)
+                } else {
+                    call.respondText("Patient device assignment with ID $id not found", status = HttpStatusCode.NotFound)
+                }
+            } catch (e: Exception) {
+                call.application.log.error("Error deleting patient device assignment: ${e.message}", e)
+                call.respondText("Failed to delete patient device assignment: ${e.message}", status = HttpStatusCode.InternalServerError)
+            }
         }
 
         // Устройства
@@ -652,6 +755,68 @@ fun Application.configureRouting() {
                     HttpStatusCode.InternalServerError,
                     mapOf("error" to "Ошибка при отправке уведомления: ${e.message}")
                 )
+            }
+        }
+
+
+        post("/register_fcm_token/{practitionerId}") {
+            val practitionerId = call.parameters["practitionerId"]?.toIntOrNull()
+            val requestBody = call.receive<FcmTokenRequest>()
+            val fcmToken = requestBody.fcmToken
+
+            if (practitionerId == null || fcmToken.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, "Invalid practitioner ID or FCM token.")
+                return@post
+            }
+
+            try {
+                transaction {
+                    // Используем INSERT ... ON CONFLICT для upsert
+                    PractitionerFcmTokens.insertIgnore {
+                        it[PractitionerFcmTokens.practitionerId] = practitionerId
+                        it[PractitionerFcmTokens.fcmToken] = fcmToken
+                    }
+
+                    // Если запись уже существует, обновляем токен
+                    PractitionerFcmTokens.update({ PractitionerFcmTokens.practitionerId eq practitionerId }) {
+                        it[PractitionerFcmTokens.fcmToken] = fcmToken
+                    }
+
+                    application.log.info("FCM token for practitioner ID $practitionerId (re)registered.")
+                }
+                call.respond(HttpStatusCode.OK, mapOf("message" to "FCM token registered successfully."))
+            } catch (e: Exception) {
+                application.log.error("Error registering FCM token: ${e.message}", e)
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to register FCM token: ${e.message}"))
+            }
+        }
+
+        // Route for unregistering FCM token
+        delete("/unregister_fcm_token/{practitionerId}") {
+            val practitionerId = call.parameters["practitionerId"]?.toIntOrNull()
+
+            if (practitionerId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid practitioner ID."))
+                return@delete
+            }
+
+            try {
+                newSuspendedTransaction(Dispatchers.IO) {
+                    val deletedRows = PractitionerFcmTokens.deleteWhere {
+                        PractitionerFcmTokens.practitionerId eq practitionerId
+                    }
+
+                    if (deletedRows > 0) {
+                        application.log.info("FCM token for practitioner ID $practitionerId successfully unregistered.")
+                        call.respond(HttpStatusCode.OK, mapOf("message" to "FCM token unregistered successfully."))
+                    } else {
+                        application.log.warn("No FCM token found for practitioner ID $practitionerId.")
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "No FCM token found for practitioner ID $practitionerId."))
+                    }
+                }
+            } catch (e: Exception) {
+                application.log.error("Error unregistering FCM token for practitioner ID $practitionerId: ${e.message}", e)
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to unregister FCM token: ${e.message}"))
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.example
 
 import io.ktor.server.application.*
+import org.jetbrains.exposed.sql.ReferenceOption
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
@@ -18,12 +19,12 @@ fun Application.configureDatabases() {
             Observations,
             AlertThresholds,
             Alerts,
-            Encounters
+            Encounters,
+            PractitionerFcmTokens
         )
 
     }
 }
-
 // Определения таблиц остаются без изменений (как в предыдущем ответе)
 object Patients : Table("patient") {
     val id = integer("id").autoIncrement()
@@ -103,4 +104,12 @@ object Encounters : Table("encounter") {
     val recordedAt = timestamp("recorded_at").defaultExpression(CurrentTimestamp())
     val recordedBy = integer("recorded_by").references(Practitioners.id)
     override val primaryKey = PrimaryKey(id)
+}
+
+object PractitionerFcmTokens : Table("practitioner_fcm_tokens") {
+    val practitionerId = integer("practitioner_id")
+        .references(Practitioners.id, onDelete = ReferenceOption.CASCADE) // Ссылка на ID врача
+        .uniqueIndex() // Каждый врач имеет максимум один FCM токен (для простоты)
+    val fcmToken = varchar("fcm_token", 255) // FCM токены могут быть длинными
+    override val primaryKey = PrimaryKey(practitionerId) // practitionerId как первичный ключ для удобства upsert
 }
