@@ -13,10 +13,10 @@ import java.net.http.HttpClient
 fun Application.module() {
 
     Database.connect(
-        url = "jdbc:postgresql://localhost:5432/icu_db",
-        driver = "org.postgresql.Driver",
-        user = "postgres",
-        password = "2025"
+        url= "jdbc:postgresql://yamabiko.proxy.rlwy.net:42587/railway",
+        driver= "org.postgresql.Driver",
+        user= "postgres",
+        password= "bJnkfcNmxKKnsuLByGqwiAbfzJmKWXYa"
     )
     // Инициализируем HttpClient и FCM параметры ВЫШЕ лямбды alertSender
     val client = HttpClient(CIO) {
